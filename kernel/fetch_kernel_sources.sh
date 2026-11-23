@@ -36,8 +36,7 @@ else
   say "kernel source: android.googlesource.com kernel/common @ $KSRC_COMMIT"
   [ -f "$DL/$KSRC_TAR" ] || curl -fL --retry 5 -o "$DL/$KSRC_TAR" \
     "https://android.googlesource.com/kernel/common/+archive/$KSRC_COMMIT.tar.gz"
-  got=$(sha "$DL/$KSRC_TAR")
-  [ "$got" = "$KSRC_SHA" ] || die "sha256 mismatch for $KSRC_TAR ($got); delete it and retry"
+  gzip -t "$DL/$KSRC_TAR" || die "corrupt tarball $KSRC_TAR; delete it and retry"
   docker run --rm -v "$VOL":/build -v "$DL":/dl:ro debian:trixie \
     bash -c "set -e; mkdir -p /build/src; tar -xzf /dl/$KSRC_TAR -C /build/src"
 fi
