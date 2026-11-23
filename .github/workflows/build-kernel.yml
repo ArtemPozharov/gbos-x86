@@ -1,0 +1,62 @@
+name: Build gbOS86 kernel (AMD_PMC)
+
+on:
+  push:
+    branches:
+      - build/amd-pmc-kernel
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build gbos-kbuild Docker image
+        run: docker build -t gbos-kbuild kernel/docker
+
+      - name: Fetch busybox
+        run: sh tools/fetch_busybox.sh
+
+      - name: Fetch kernel sources, clang, and KernelSU
+        run: |
+          sh kernel/fetch_kernel_sources.sh
+          docker run --rm -v gbos-ksrc:/build debian:trixie bash -c '
+            set -e
+            if [ ! -e /build/inputs/clang-r584948c ] && [ -d /build/inputs/clang-r584948b ]; then
+              ln -s clang-r584948b /build/inputs/clang-r584948c
+            fi
+            ls -la /build/inputs/clang-r584948c/bin/clang*
+            if [ ! -e /build/inputs/clang-r584948c/bin/clang-22 ]; then
+              ln -s clang /build/inputs/clang-r584948c/bin/clang-22
+            fi
+          '
+
+      - name: Build kernel and modules
+        run: sh kernel/build_kernel.sh
+
+      - name: Verify CONFIG_AMD_PMC in built kernel
+        run: |
+          python3 tools/extract_ikconfig.py usb/out/BOOTX64.EFI | grep -E 'CONFIG_AMD_PM[CF]='
+          ls -lh usb/out/BOOTX64.EFI
+          find usb/modules -name '*.ko' | wc -l
+
+      - name: Package kernel artifacts
+        run: |
+          mkdir -p dist
+          tar -czf dist/gbos-kernel-amd-pmc.tar.gz -C usb out/BOOTX64.EFI modules kmod
+          ls -lh dist/gbos-kernel-amd-pmc.tar.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gbos-kernel-amd-pmc
+          path: dist/gbos-kernel-amd-pmc.tar.gz
+          retention-days: 14
